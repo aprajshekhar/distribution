@@ -9,7 +9,7 @@ COPY cmd/registry/config-dev.yml /etc/docker/registry/config.yml
 
 RUN set -ex \
     && yum install -y make git
-
+RUN make PREFIX=/go clean build
 RUN make PREFIX=/go clean binaries
 
 VOLUME ["/var/lib/registry"]
