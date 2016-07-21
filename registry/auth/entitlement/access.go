@@ -1,12 +1,12 @@
-// access
+// entitlement
 package entitlement
 
 import (
 	"fmt"
-
 	"net/http"
 	"strings"
 
+	log "github.com/Sirupsen/logrus"
 	"github.com/docker/distribution/context"
 	"github.com/docker/distribution/registry/auth"
 )
@@ -48,24 +48,38 @@ func (ac *accessController) Authorized(ctx context.Context, accessRecords ...aut
 		return nil, err
 	}
 
-	if req.Header.Get("SSL_CLIENT_CERT") == "" {
-
-		return nil, &challenge{
-			realm: ac.realm,
-			err:   fmt.Errorf("Authentication Failure"),
-		}
-	}
+	//	if req.Header.Get("SSL_CLIENT_CERT") == "" {
+	//		fmt.Println("repo name: %s", getRepoName(req.RequestURI))
+	//		fmt.Println("SSL CERT: %s", req.Header.Get("SSL_CLIENT_CERT"))
+	//		return nil, &challenge{
+	//			realm: ac.realm,
+	//			err:   fmt.Errorf("Authentication Failure"),
+	//		}
+	//	}
 
 	pemStr := req.Header.Get("SSL_CLIENT_CERT")
-	repoName := getRepoName(req.RequestURI)
+	repoName := getName(ctx)
 	//if we are not getting any repo name
 	//and the the URI requested is /v2/ (ping)
 	//then don't call authentication service
-	if repoName == "" && "/v2/" == req.RequestURI {
+	log.Debugln("requestURI: ", req.RequestURI)
+	log.Debugln("requested repo name: ", getName(ctx))
+	if skipAuth(req) {
+		log.Debugln("Returning without calling authentication servie")
 		return auth.WithUser(ctx, auth.UserInfo{Name: "entitled-ping"}), nil
 	}
 
-	path := fmt.Sprintf("/content/dist/rhel/server/7/7Server/x86_64/containers/registry/%s", repoName)
+	if "/v2/" != req.RequestURI && repoName == "" {
+		log.Errorln("No repo name retrieved. This should not happen")
+		return nil, &challenge{
+			realm: ac.realm,
+			err:   fmt.Errorf("Authentication Failure as no repo name has been supplied"),
+		}
+	}
+
+	libraryName := repoName[:strings.LastIndex(repoName, "/")+1]
+	log.Debugln("Computed library name: ", libraryName)
+	path := fmt.Sprintf("/content/dist/rhel/server/7/7Server/x86_64/containers/registry/%s", libraryName)
 
 	if resData, err1 = ac.service.CheckEntitlement(pemStr, path); err1 != nil {
 		return nil, &challenge{
@@ -105,16 +119,10 @@ var _ auth.Challenge = challenge{}
 func init() {
 	auth.Register("entitlement", auth.InitFunc(newAccessController))
 }
+func getName(ctx context.Context) (name string) {
+	return context.GetStringValue(ctx, "vars.name")
+}
 
-func getRepoName(uri string) string {
-	comps := [...]string{"manifests"}
-	var name string
-	for _, element := range comps {
-		if strings.Contains(uri, element) {
-			name = uri[len("/v2/") : strings.LastIndex(uri, element)-1]
-		} else {
-			name = ""
-		}
-	}
-	return name
+func skipAuth(req *http.Request) bool {
+	return "/v2/" == req.RequestURI || req.Method == "POST" || req.Method == "HEAD" || req.Method == "PATCH" || req.Method == "PUT"
 }

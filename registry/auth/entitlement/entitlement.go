@@ -5,12 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/Azure/azure-sdk-for-go/core/http"
-	"github.com/Azure/azure-sdk-for-go/core/tls"
-	//"log"
 	"io"
 	"io/ioutil"
-	//"strconv"
+	"net/http"
+	"net/http/httputil"
+
+	log "github.com/Sirupsen/logrus"
 )
 
 type Entitlement struct {
@@ -18,8 +18,12 @@ type Entitlement struct {
 }
 
 type requestData struct {
-	EntitlementData string
-	Path            string
+	Data data `json:"data"`
+}
+
+type data struct {
+	EntitlementData string `json:"pem_data"`
+	Path            string `json:"path"`
 }
 
 type ResponseData struct {
@@ -34,50 +38,58 @@ func NewEntitlement(servicePath string) *Entitlement {
 }
 
 func (entitlement *Entitlement) CheckEntitlement(entitlementData, path string) (ResponseData, error) {
+	var detail data
 	var reqData requestData
 	var resData ResponseData
 	var err error
-	reqData.EntitlementData = entitlementData
-	reqData.Path = path
-
+	detail.EntitlementData = entitlementData
+	detail.Path = path
+	reqData.Data = detail
 	jsondata, marshalerr := json.Marshal(reqData)
 
 	if marshalerr != nil {
 		return resData, marshalerr
 	}
 
-	if resData, err = execute("POST", entitlement.EndPoint, jsondata, "/verify"); err != nil {
+	if resData, err = execute("POST", "/verify", jsondata, entitlement.EndPoint); err != nil {
 		return resData, err
 	}
-
+	log.Debug("received response data: ", resData)
 	return resData, nil
 
 }
 
 func execute(verb, url string, content []byte, endPoint string) (ResponseData, error) {
 	var data ResponseData
-	transport := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-	defaultClient := &http.Client{Transport: transport}
+	fmt.Println("uri ", endPoint+url)
+	//	transport := &http.Transport{
+	//		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	//	}
+	//defaultClient := &http.Client{Transport: transport}
 	request, err := http.NewRequest(verb, endPoint+url, bytes.NewBuffer(content))
 
 	if err != nil {
 		return data, err
 	}
+	request.Header.Set("Content-Type", "application/json")
+	dump1, _ := httputil.DumpRequest(request, true)
+	log.Debug("req details for auth service")
+	log.Debug(string(dump1))
 
-	response, err := defaultClient.Do(request)
+	response, err := http.DefaultClient.Do(request)
 
-	fmt.Println("calling service with: ", string(content[:]))
 	if err != nil {
+		log.Debug("error in call:", err)
 		return data, err
 	}
 
 	defer response.Body.Close()
 
 	statusCode := response.StatusCode
-
+	log.Debug("status code:", statusCode)
 	if statusCode != 200 {
+		responseBody, _ := getResponse(response)
+		log.Debug("error body: ", string(responseBody[:]))
 		return data, fmt.Errorf("Received non OK status %s from service", string(statusCode))
 	}
 

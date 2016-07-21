@@ -4,6 +4,7 @@ import (
 	_ "net/http/pprof"
 
 	"github.com/docker/distribution/registry"
+	_ "github.com/docker/distribution/registry/auth/entitlement"
 	_ "github.com/docker/distribution/registry/auth/htpasswd"
 	_ "github.com/docker/distribution/registry/auth/silly"
 	_ "github.com/docker/distribution/registry/auth/token"
