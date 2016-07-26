@@ -1,4 +1,4 @@
-%define version    2.4.1-1
+%define version    2.4.1.1
 %define debug_package %{nil}
 Name: docker-distribution-rri
 Version: %{version}
