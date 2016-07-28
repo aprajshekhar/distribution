@@ -1,2 +1,5 @@
 targets:
-  rhel-7:
+  centos-7:
+
+after_install: "postinstall.sh"
+
