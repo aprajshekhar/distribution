@@ -1,1 +1,1 @@
-cp ./docker-distribution.service /usr/lib/systemd/system/
+cp /opt/distribution-rri/docker-distribution.service /usr/lib/systemd/system/
