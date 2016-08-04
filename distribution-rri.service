@@ -1,0 +1,10 @@
+[Unit]
+Description=v2 Registry server for Docker
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/registry serve /etc//etc/distribution-rri/config.yml
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
