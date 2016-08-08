@@ -55,7 +55,7 @@ func (ac *accessController) Authorized(ctx context.Context, accessRecords ...aut
 	}
 
 	if req.Header.Get("SSL_CLIENT_CERT") == "" {
-		log.Debugln("repo name: %s", getRepoName(req.RequestURI))
+		log.Debugln("repo name: %s", getName(ctx))
 
 		return nil, &challenge{
 			realm: ac.realm,
