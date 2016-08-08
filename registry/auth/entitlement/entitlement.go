@@ -86,10 +86,10 @@ func execute(verb, url string, content []byte, endPoint string) (ResponseData, e
 	defer response.Body.Close()
 
 	statusCode := response.StatusCode
-	log.Debug("status code:", statusCode)
+	log.Debug("Received from service status code:", statusCode)
 	if statusCode != 200 {
 		responseBody, _ := getResponse(response)
-		log.Debug("error body: ", string(responseBody[:]))
+		log.Debug("Received from service error body: ", string(responseBody[:]))
 		return data, fmt.Errorf("Received non OK status %s from service", string(statusCode))
 	}
 

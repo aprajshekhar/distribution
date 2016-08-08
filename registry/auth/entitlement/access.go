@@ -1,4 +1,9 @@
-// entitlement
+// Package entitlement provides entitlement certificate based authentication
+// scheme that checks whether the requested path is present in the entitlement
+// certificate or not.
+//
+// This authentication must be used under TLS, as non SSL requests won't have the
+// certificate data in the request
 package entitlement
 
 import (
@@ -11,9 +16,10 @@ import (
 	"github.com/docker/distribution/registry/auth"
 )
 
-// accessController provides a simple implementation of auth.AccessController
-// that simply checks for a non-empty Authorization header. It is useful for
-// demonstration and testing.
+// accessController provides a implementation of auth.AccessController
+// that checks for a non-empty SSL CLIENT header, which is then used for
+// entitlement cert based authentication. It is useful for
+// candlepin issued entitlement cert based auth.
 type accessController struct {
 	realm   string
 	service *Entitlement
@@ -38,8 +44,8 @@ func newAccessController(options map[string]interface{}) (auth.AccessController,
 	return &accessController{realm: realm.(string), service: e}, nil
 }
 
-// Authorized simply checks for the existence of the authorization header,
-// responding with a bearer challenge if it doesn't exist.
+// Authorized simply checks for the existence of the SSL CLIENT headers,
+// using which entitlement check is done
 func (ac *accessController) Authorized(ctx context.Context, accessRecords ...auth.Access) (context.Context, error) {
 	var resData ResponseData
 	var err1 error
@@ -48,19 +54,20 @@ func (ac *accessController) Authorized(ctx context.Context, accessRecords ...aut
 		return nil, err
 	}
 
-	//	if req.Header.Get("SSL_CLIENT_CERT") == "" {
-	//		fmt.Println("repo name: %s", getRepoName(req.RequestURI))
-	//		fmt.Println("SSL CERT: %s", req.Header.Get("SSL_CLIENT_CERT"))
-	//		return nil, &challenge{
-	//			realm: ac.realm,
-	//			err:   fmt.Errorf("Authentication Failure"),
-	//		}
-	//	}
+	if req.Header.Get("SSL_CLIENT_CERT") == "" {
+		log.Debugln("repo name: %s", getRepoName(req.RequestURI))
+
+		return nil, &challenge{
+			realm: ac.realm,
+			err:   fmt.Errorf("Authentication Failure"),
+		}
+	}
 
 	pemStr := req.Header.Get("SSL_CLIENT_CERT")
+	log.Debugln("SSL CERT: %s", pemStr)
 	repoName := getName(ctx)
-	//if we are not getting any repo name
-	//and the the URI requested is /v2/ (ping)
+	//if it is a push request
+	//or the the URI requested is /v2/ (ping)
 	//then don't call authentication service
 	log.Debugln("requestURI: ", req.RequestURI)
 	log.Debugln("requested repo name: ", getName(ctx))
@@ -69,6 +76,8 @@ func (ac *accessController) Authorized(ctx context.Context, accessRecords ...aut
 		return auth.WithUser(ctx, auth.UserInfo{Name: "entitled-ping"}), nil
 	}
 
+	// check for repo name being empty. If repo name is empty
+	// and the URI is not for ping, return authentication error
 	if "/v2/" != req.RequestURI && repoName == "" {
 		log.Errorln("No repo name retrieved. This should not happen")
 		return nil, &challenge{
@@ -82,6 +91,7 @@ func (ac *accessController) Authorized(ctx context.Context, accessRecords ...aut
 	path := fmt.Sprintf("/content/dist/rhel/server/7/7Server/x86_64/containers/registry/%s", libraryName)
 
 	if resData, err1 = ac.service.CheckEntitlement(pemStr, path); err1 != nil {
+		log.Errorln("Service returned error: ", err1)
 		return nil, &challenge{
 			realm: ac.realm,
 			err:   fmt.Errorf("Authentication Failure"),
@@ -89,6 +99,7 @@ func (ac *accessController) Authorized(ctx context.Context, accessRecords ...aut
 	}
 
 	if resData.Verified != "true" {
+		log.Errorln("Service returned unauthenticated/unauthorized")
 		return nil, &challenge{
 			realm: ac.realm,
 			err:   fmt.Errorf("Authentication Failure"),
@@ -108,9 +119,11 @@ func (ac challenge) Error() string {
 	return ac.err.Error()
 }
 
-// SetChallenge sets the WWW-Authenticate value for the response.
+// SetChallenge sets the WWW-Authenticate value for the response. However
+// that is not required for entitlement based auth. Hence, providing empty
+// implementation
 func (ac challenge) SetHeaders(w http.ResponseWriter) {
-	//w.Header().Add("WWW-Authenticate", ac.challengeParams())
+
 }
 
 var _ auth.Challenge = challenge{}
@@ -119,6 +132,7 @@ var _ auth.Challenge = challenge{}
 func init() {
 	auth.Register("entitlement", auth.InitFunc(newAccessController))
 }
+
 func getName(ctx context.Context) (name string) {
 	return context.GetStringValue(ctx, "vars.name")
 }
