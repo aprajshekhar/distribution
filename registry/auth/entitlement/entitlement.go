@@ -59,6 +59,28 @@ func (entitlement *Entitlement) CheckEntitlement(entitlementData, path string) (
 
 }
 
+func (entitlement *Entitlement) CheckEntitlementV2(req *http.Request, path string) (ResponseData, error) {
+	var detail data
+	var reqData requestData
+	var resData ResponseData
+	var err error
+	//detail.EntitlementData = entitlementData
+	detail.Path = path
+	reqData.Data = detail
+	jsondata, marshalerr := json.Marshal(reqData)
+
+	if marshalerr != nil {
+		return resData, marshalerr
+	}
+
+	if resData, err = executeV2("POST", "/verify", jsondata, entitlement.EndPoint, req); err != nil {
+		return resData, err
+	}
+	log.Debug("received response data: ", resData)
+	return resData, nil
+
+}
+
 func execute(verb, url string, content []byte, endPoint string) (ResponseData, error) {
 	var data ResponseData
 	fmt.Println("uri ", endPoint+url)
@@ -68,6 +90,54 @@ func execute(verb, url string, content []byte, endPoint string) (ResponseData, e
 	//defaultClient := &http.Client{Transport: transport}
 	request, err := http.NewRequest(verb, endPoint+url, bytes.NewBuffer(content))
 
+	if err != nil {
+		return data, err
+	}
+	request.Header.Set("Content-Type", "application/json")
+	dump1, _ := httputil.DumpRequest(request, true)
+	log.Debug("req details for auth service")
+	log.Debug(string(dump1))
+
+	response, err := http.DefaultClient.Do(request)
+
+	if err != nil {
+		log.Debug("error in call:", err)
+		return data, err
+	}
+
+	defer response.Body.Close()
+
+	statusCode := response.StatusCode
+	log.Debug("Received from service status code:", statusCode)
+	if statusCode != 200 {
+		responseBody, _ := getResponse(response)
+		log.Debug("Received from service error body: ", string(responseBody[:]))
+		return data, fmt.Errorf("Received non OK status %s from service", string(statusCode))
+	}
+
+	var responseBody []byte
+	responseBody, err = getResponse(response)
+	if err != nil {
+		return data, err
+	}
+
+	if err = json.Unmarshal(responseBody, &data); err != nil {
+		return data, err
+	}
+
+	return data, nil
+
+}
+
+func executeV2(verb, url string, content []byte, endPoint string, req *http.Request) (ResponseData, error) {
+	var data ResponseData
+	fmt.Println("uri ", endPoint+url)
+	//	transport := &http.Transport{
+	//		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	//	}
+	//defaultClient := &http.Client{Transport: transport}
+	request, err := http.NewRequest(verb, endPoint+url, bytes.NewBuffer(content))
+	request.Header.Add("SSL_CLIENT_CERT", req.Header.Get("SSL_CLIENT_CERT"))
 	if err != nil {
 		return data, err
 	}
