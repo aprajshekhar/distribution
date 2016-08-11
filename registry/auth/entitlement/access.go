@@ -50,8 +50,8 @@ func (ac *accessController) Authorized(ctx context.Context, accessRecords ...aut
 	var resData ResponseData
 	var err1 error
 	req, err := context.GetRequest(ctx)
-	res, err2 := context.GetResponseWriter(ctx)
-	if err != nil || err2 != nil {
+	//res, err2 := context.GetResponseWriter(ctx)
+	if err != nil {
 		return nil, err
 	}
 
@@ -90,8 +90,8 @@ func (ac *accessController) Authorized(ctx context.Context, accessRecords ...aut
 	libraryName := repoName[:strings.LastIndex(repoName, "/")+1]
 	log.Debugln("Computed library name: ", libraryName)
 	path := fmt.Sprintf("/content/dist/rhel/server/7/7Server/x86_64/containers/registry/%s", libraryName)
-	http.Redirect(res, req, ac.service.EndPoint, 302)
-	if resData, err1 = ac.service.CheckEntitlement(pemStr, path); err1 != nil {
+
+	if resData, err1 = ac.service.CheckEntitlementV2(req, path); err1 != nil {
 		log.Errorln("Service returned error: ", err1)
 		return nil, &challenge{
 			realm: ac.realm,
